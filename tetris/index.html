@@ -36,8 +36,9 @@
   }
   canvas { display: block; }
   #board {
+    height: min(600px, calc(100dvh - 40px));
+    width: auto;
     max-width: 100%;
-    height: auto;
     background: var(--panel);
     border: 2px solid var(--grid);
     border-radius: 6px;
@@ -100,13 +101,42 @@
   button:active { transform: translateY(1px); }
   .touch {
     display: none;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
     width: 100%;
-    max-width: 360px;
+    max-width: 420px;
   }
-  .touch button { padding: 14px 0; background: var(--panel); color: var(--text); border: 2px solid var(--grid); }
-  @media (pointer: coarse) { .touch { display: grid; } }
+  .touch button {
+    padding: 14px 0;
+    background: var(--panel);
+    color: var(--text);
+    border: 2px solid var(--grid);
+    font-size: 18px;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .touch button.primary { background: var(--accent); color: #0b1020; border-color: var(--accent); }
+  @media (pointer: coarse) {
+    .touch { display: grid; }
+    #board { height: min(600px, calc(100dvh - 120px)); }
+  }
+  /* Phone: stats in one row on top, board in the middle, buttons below. */
+  @media (max-width: 600px) {
+    body { align-items: flex-start; padding: 8px 16px; }
+    .game { flex-direction: column; align-items: center; flex-wrap: nowrap; gap: 8px; width: 100%; }
+    .side { order: -1; flex-direction: row; flex-wrap: wrap; gap: 6px; width: 100%; min-width: 0; }
+    .side .card { flex: 1 1 0; min-width: 0; padding: 4px 8px; }
+    .card h2 { font-size: 9px; margin-bottom: 2px; }
+    .card .value { font-size: 18px; }
+    #next { width: 36px; height: 36px; }
+    .help { display: none; }
+    #startBtn { flex-basis: 100%; padding: 8px; }
+    #board {
+      height: min(600px, calc(100dvh - 230px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+    }
+  }
 </style>
 </head>
 <body>
@@ -127,10 +157,12 @@
     </div>
   </div>
   <div class="touch">
-    <button data-act="left">◀</button>
-    <button data-act="rotate">⟳</button>
-    <button data-act="right">▶</button>
-    <button data-act="drop">⤓</button>
+    <button data-act="left" aria-label="Move left">◀</button>
+    <button data-act="right" aria-label="Move right">▶</button>
+    <button data-act="down" aria-label="Soft drop">▼</button>
+    <button data-act="rotate" class="primary" aria-label="Rotate">⟳</button>
+    <button data-act="drop" aria-label="Hard drop">⤓</button>
+    <button data-act="pause" aria-label="Pause">❚❚</button>
   </div>
 </div>
 
@@ -350,7 +382,8 @@
       ctx.fillText(msg, boardCanvas.width / 2, boardCanvas.height / 2 - 10);
       ctx.font = '14px system-ui, sans-serif';
       ctx.fillStyle = '#c9cce0';
-      const sub = gameOver ? `Score ${score}` : paused ? 'Press P to resume' : 'Press Start or Enter';
+      const touch = matchMedia('(pointer: coarse)').matches;
+      const sub = gameOver ? `Score ${score}` : paused ? (touch ? 'Tap ❚❚ to resume' : 'Press P to resume') : (touch ? 'Tap to start' : 'Press Start or Enter');
       ctx.fillText(sub, boardCanvas.width / 2, boardCanvas.height / 2 + 20);
     }
   }
@@ -436,9 +469,53 @@
   });
 
   startBtn.addEventListener('click', start);
+  // Touch buttons: act on press; left/right/down repeat while held.
+  const REPEATS = { left: true, right: true, down: true };
   document.querySelectorAll('.touch button').forEach(b => {
-    b.addEventListener('click', () => { act(b.dataset.act); b.blur(); });
+    let delay = null, repeat = null;
+    const stop = () => { clearTimeout(delay); clearInterval(repeat); delay = repeat = null; };
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      const name = b.dataset.act;
+      if (name === 'pause') { togglePause(); return; }
+      if (!running) { start(); return; }
+      act(name);
+      if (REPEATS[name]) {
+        delay = setTimeout(() => { repeat = setInterval(() => act(name), 60); }, 180);
+      }
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => b.addEventListener(t, stop));
+    b.addEventListener('contextmenu', e => e.preventDefault());
   });
+
+  // Board gestures: drag sideways to move, tap to rotate, swipe down to drop.
+  let gesture = null;
+  boardCanvas.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;
+    e.preventDefault();
+    gesture = { x: e.clientX, y: e.clientY, lastX: e.clientX, t: performance.now(), moved: false };
+  });
+  boardCanvas.addEventListener('pointermove', e => {
+    if (!gesture) return;
+    const cellPx = boardCanvas.getBoundingClientRect().width / COLS;
+    const dx = e.clientX - gesture.lastX;
+    if (Math.abs(dx) >= cellPx) {
+      const steps = Math.trunc(dx / cellPx);
+      for (let i = 0; i < Math.abs(steps); i++) act(steps > 0 ? 'right' : 'left');
+      gesture.lastX += steps * cellPx;
+      gesture.moved = true;
+    }
+  });
+  boardCanvas.addEventListener('pointerup', e => {
+    if (!gesture) return;
+    const dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
+    const dt = performance.now() - gesture.t;
+    const g = gesture; gesture = null;
+    if (!running) { if (Math.abs(dx) < 12 && Math.abs(dy) < 12) start(); return; }
+    if (dy > 60 && dy > Math.abs(dx) * 1.5) act('drop');
+    else if (!g.moved && Math.abs(dx) < 12 && Math.abs(dy) < 12 && dt < 300) act('rotate');
+  });
+  boardCanvas.addEventListener('pointercancel', () => { gesture = null; });
 
   // Expose a tiny hook for automated testing.
   window.__tetris = { start, act, get state() { return { score, level, lines, running, gameOver }; } };

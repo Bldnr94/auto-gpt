@@ -14,7 +14,7 @@ Open `index.html` in any modern browser, then press **Start** or **Enter**.
 | Space | Hard drop |
 | P | Pause / resume |
 
-Touch devices get on-screen buttons.
+On a phone or tablet, the board fits the screen and on-screen buttons appear below it: ◀ ▶ move, ▼ soft drop, ⟳ rotate, ⤓ hard drop, ❚❚ pause. Hold ◀, ▶ or ▼ to repeat. You can also use gestures on the board: tap to rotate, drag sideways to move, and swipe down to hard drop.
 
 ## Features
 
