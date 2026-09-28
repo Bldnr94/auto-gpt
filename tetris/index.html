@@ -36,6 +36,8 @@
   }
   canvas { display: block; }
   #board {
+    max-width: 100%;
+    height: auto;
     background: var(--panel);
     border: 2px solid var(--grid);
     border-radius: 6px;
@@ -396,6 +398,7 @@
     spawn();
     updateHud();
     startBtn.textContent = 'Restart';
+    startBtn.blur(); // keep Enter/Space from re-clicking the button mid-game
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(loop);
   }
@@ -434,7 +437,7 @@
 
   startBtn.addEventListener('click', start);
   document.querySelectorAll('.touch button').forEach(b => {
-    b.addEventListener('click', () => act(b.dataset.act));
+    b.addEventListener('click', () => { act(b.dataset.act); b.blur(); });
   });
 
   // Expose a tiny hook for automated testing.
